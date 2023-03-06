@@ -1,0 +1,2 @@
+-arreglar cd y exit en procesos
+-errores
