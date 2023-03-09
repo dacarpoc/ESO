@@ -4,10 +4,11 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
-#define MAX_LENGTH 1024
-#define MAX_COMMANDS 50
+#define MAX_LONGITUD 1024
+#define MAX_COMANDOS 50
 
-void Hijo(char *almacen);
+void cd (char **args, int i);
+void hijo(char *almacen);
 char error_message[30] = "An error has occurred\n"; 
 
 int main(int argc, char *argv[]) {
@@ -17,7 +18,7 @@ int main(int argc, char *argv[]) {
     ssize_t tam;
     FILE *fd = stdin;
     int batch_mode = 0;
-
+    
     if(argc > 2){
 
         fprintf(stderr, "%s", error_message);
@@ -34,6 +35,7 @@ int main(int argc, char *argv[]) {
 
         batch_mode = 1;
     }
+
     while (1) {
 
         if (!batch_mode) {
@@ -41,7 +43,8 @@ int main(int argc, char *argv[]) {
             fprintf(stdout,"UVash> ");
         }
        
-        tam = getline(&almacen, &tam_line, fd);        
+        tam = getline(&almacen, &tam_line, fd); 
+
         if (tam == -1) {
 
             exit(0);
@@ -51,65 +54,107 @@ int main(int argc, char *argv[]) {
 
             almacen[tam - 1] = '\0';
         }
-        if (strcmp(almacen, "exit") == 0) {
+
+	    if (strcmp(almacen, "exit") == 0) {
 
             exit(0);
         }
 
-        char *commands[MAX_COMMANDS];
-        int num_commands = 0;
-        char *token = strtok(almacen, "&");        
-        while (token != NULL) {
+        if (strncmp(almacen, "cd ", 3) == 0) {
 
-            commands[num_commands++] = token;
-            token = strtok(NULL, "&");
-        }
+            char *argscd[MAX_LONGITUD];
+            int num_args = 0;
+            char *token2 = strtok(almacen, " ");  
 
-        pid_t pids[num_commands];
-        for (int i = 0; i < num_commands; i++) {
+            while (token2 != NULL) {
 
-            pid_t pid = fork();
-            if (pid == 0) {
-
-                Hijo(commands[i]);
-                exit(0);
+                argscd[num_args++] = token2;
+                token2 = strtok(NULL, " ");
             } 
-            if (pid > 0) {
-
-                pids[i] = pid;
-            } else {
-
-                fprintf(stderr, "%s", error_message);
-                exit(1);
-            }
+            cd(argscd, num_args);
         }
-        for (int i = 0; i < num_commands; i++) {
 
-            waitpid(pids[i], NULL, 0);
+        else{
+
+            char *comandos[MAX_COMANDOS];
+            int num_comandos = 0;
+            char *token = strtok(almacen, "&");  
+
+            while (token != NULL) {
+
+                comandos[num_comandos++] = token;
+                token = strtok(NULL, "&");
+            }
+
+            pid_t pids[num_comandos];
+
+            for (int i = 0; i < num_comandos; i++) {
+
+                pid_t pid = fork();
+
+                if (pid == 0) {
+
+                    hijo(comandos[i]);
+                    exit(0);
+                } 
+
+                if (pid > 0) {
+
+                    pids[i] = pid;
+                } 
+                
+                else {
+
+                    fprintf(stderr, "%s", error_message);
+                    exit(1);
+                }
+            }
+
+            for (int i = 0; i < num_comandos; i++) {
+
+                waitpid(pids[i], NULL, 0);
+            }
         }
     }
 
     exit(0);
 }
-void Hijo(char *almacen){
+void cd (char **args, int i){
+
+	if (i != 2) {
+
+        fprintf(stderr,"%s", error_message);
+        exit(0);
+    }
+
+    if (chdir(args[1]) != 0) {
+        
+        fprintf(stderr,"%s", error_message);
+        exit(0);
+    }	
+}
+void hijo(char *almacen){
             
-    char *args[MAX_LENGTH];
+    char *args[MAX_LONGITUD];
     char *token = strtok(almacen, " ");
     int i = 0;
     int fich_salida = 0; 
     FILE *fout=stdout;
+
     while (token != NULL && !fich_salida) {
 
         if (strcmp(token, ">") == 0) {
         
             fich_salida = 1;
             token = strtok(NULL, " ");
+
             if((fout = fopen(token, "w"))==NULL){
 
                 fprintf(stderr,"%s", error_message);
                 exit(0);
             }
         }
+
         else{
 
             args[i] = token;
@@ -117,8 +162,9 @@ void Hijo(char *almacen){
             token = strtok(NULL, " ");
         }                
     }
+    
+    args[i] = NULL;  
 
-    args[i] = NULL;                   
     if (fich_salida) {
                     
         dup2(fileno(fout), 1);
@@ -127,29 +173,12 @@ void Hijo(char *almacen){
         fclose(fout);
     }
 
-    if (strcmp(args[0], "cd") == 0) {
+    if(execvp(args[0], args) == -1){
 
-        if (i != 2) {
-
-            fprintf(stderr,"%s", error_message);
-            exit(0);
-        }
-        if (chdir(args[1]) != 0) {
-
-            fprintf(stderr,"%s", error_message);
-            exit(0);
-        }
+        fprintf(stderr,"%s", error_message);
+        exit(0);
     }
-    else{
 
-        if(execvp(args[0], args) == -1){
-            fprintf(stderr,"%s", error_message);
-            exit(0);
-        }
-
-        fprintf(stderr, "%s", error_message);
-        exit(1);
-    }                
-    
+    fprintf(stderr, "%s", error_message);
+    exit(1);    
 }
-
